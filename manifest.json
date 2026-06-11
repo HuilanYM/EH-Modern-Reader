@@ -1,11 +1,14 @@
 {
   "manifest_version": 3,
-  "name": "EH Modern Reader",
-  "version": "2.5.1",
-  "description": "Modern E-Hentai Reader with MPV/Gallery modes, smart throttling, progress indicator",
+  "name": "__MSG_extName__",
+  "version": "2.5.10",
+  "default_locale": "en",
+  "description": "__MSG_extDescription__",
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "scripting",
+    "declarativeNetRequestWithHostAccess"
   ],
   "host_permissions": [
     "https://e-hentai.org/*",
@@ -13,6 +16,17 @@
     "https://nhentai.net/*",
     "https://nhentai.xxx/*",
     "https://hitomi.la/*",
+    "https://*.hitomi.la/*",
+    "https://wnacg.com/*",
+    "https://*.wnacg.com/*",
+    "https://wnacg.ru/*",
+    "https://*.wnacg.ru/*",
+    "https://www.wn07.cfd/*",
+    "https://www.wn07.shop/*",
+    "https://www.wn06.cfd/*",
+    "https://www.wn06.shop/*",
+    "https://*.qy0.ru/*",
+    "https://gold-usergeneratedcontent.net/*",
     "https://*.gold-usergeneratedcontent.net/*"
   ],
   "icons": {
@@ -49,7 +63,7 @@
         "https://e-hentai.org/mpv/*",
         "https://exhentai.org/mpv/*"
       ],
-      "js": ["content.js"],
+      "js": ["i18n.js", "content.js"],
       "run_at": "document_start"
     },
     {
@@ -57,7 +71,7 @@
         "https://e-hentai.org/g/*/*",
         "https://exhentai.org/g/*/*"
       ],
-      "js": ["gallery.js", "content.js"],
+      "js": ["i18n.js", "gallery.js"],
       "run_at": "document_end"
     },
     {
@@ -65,7 +79,7 @@
         "https://nhentai.net/g/*",
         "https://nhentai.xxx/g/*"
       ],
-      "js": ["content.js", "nhentai.js"],
+      "js": ["i18n.js", "nhentai.js"],
       "run_at": "document_end"
     },
     {
@@ -73,14 +87,28 @@
         "https://hitomi.la/*-*.html*",
         "https://hitomi.la/reader/*.html*"
       ],
-      "js": ["content.js", "hitomi.js"],
-      "run_at": "document_end"
+      "js": ["i18n.js", "hitomi.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://wnacg.com/*",
+        "https://*.wnacg.com/*",
+        "https://wnacg.ru/*",
+        "https://*.wnacg.ru/*",
+        "https://www.wn07.cfd/*",
+        "https://www.wn07.shop/*",
+        "https://www.wn06.cfd/*",
+        "https://www.wn06.shop/*"
+      ],
+      "js": ["i18n.js", "wnacg.js"],
+      "run_at": "document_start"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["style/reader.css", "content.js"],
-      "matches": ["https://e-hentai.org/*", "https://exhentai.org/*", "https://nhentai.net/*", "https://nhentai.xxx/*", "https://hitomi.la/*"]
+      "resources": ["style/reader.css"],
+      "matches": ["https://e-hentai.org/*", "https://exhentai.org/*", "https://nhentai.net/*", "https://nhentai.xxx/*", "https://hitomi.la/*", "https://wnacg.com/*", "https://*.wnacg.com/*", "https://wnacg.ru/*", "https://*.wnacg.ru/*", "https://www.wn07.cfd/*", "https://www.wn07.shop/*", "https://www.wn06.cfd/*", "https://www.wn06.shop/*"]
     }
   ]
 }

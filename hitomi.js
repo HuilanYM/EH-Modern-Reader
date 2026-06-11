@@ -1,6 +1,6 @@
 /**
  * hitomi.la Bootstrap Script
- * Build page data from hitomi gallery/reader globals and launch EH Modern Reader.
+ * Build page data from hitomi gallery/reader globals and launch Gallery Reader.
  */
 
 (function() {
@@ -15,15 +15,103 @@
     try { console.log(...args); } catch {}
   }
 
+  function ensureReaderContentScript() {
+    if (window.ehModernReaderInjected) {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve, reject) => {
+      try {
+        if (!chrome || !chrome.runtime || typeof chrome.runtime.sendMessage !== 'function') {
+          reject(new Error('Extension runtime is unavailable'));
+          return;
+        }
+
+        chrome.runtime.sendMessage({ action: 'ensureReaderContentScript' }, (response) => {
+          const lastError = chrome.runtime.lastError;
+          if (lastError) {
+            reject(new Error(lastError.message));
+            return;
+          }
+
+          if (!response || response.success !== true) {
+            reject(new Error((response && response.error) || 'Failed to inject reader script'));
+            return;
+          }
+
+          resolve();
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  function fetchHitomiText(url) {
+    return new Promise((resolve, reject) => {
+      try {
+        if (!chrome || !chrome.runtime || typeof chrome.runtime.sendMessage !== 'function') {
+          reject(new Error('Extension runtime is unavailable'));
+          return;
+        }
+
+        chrome.runtime.sendMessage({ action: 'fetchHitomiText', url }, (response) => {
+          const lastError = chrome.runtime.lastError;
+          if (lastError) {
+            reject(new Error(lastError.message));
+            return;
+          }
+
+          if (!response || response.success !== true || typeof response.text !== 'string') {
+            reject(new Error((response && response.error) || 'Failed to fetch Hitomi text'));
+            return;
+          }
+
+          resolve(response.text);
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  function waitForBody(timeoutMs = 3000) {
+    if (document.body) return Promise.resolve();
+
+    return new Promise((resolve) => {
+      let done = false;
+      let observer = null;
+      let timer = null;
+
+      const finish = () => {
+        if (done) return;
+        done = true;
+        if (observer) observer.disconnect();
+        if (timer) clearTimeout(timer);
+        resolve();
+      };
+
+      try {
+        observer = new MutationObserver(() => {
+          if (document.body) finish();
+        });
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+      } catch {}
+
+      timer = setTimeout(finish, timeoutMs);
+    });
+  }
+
   function getPathInfo() {
     const p = window.location.pathname || '';
+    const hashPage = parseInt((window.location.hash || '').replace('#', ''), 10);
+    const normalizedHashPage = Number.isFinite(hashPage) && hashPage > 0 ? hashPage : null;
 
     const readerMatch = p.match(/^\/reader\/(\d+)\.html$/i);
     if (readerMatch) {
-      const hashPage = parseInt((window.location.hash || '').replace('#', ''), 10);
       return {
         gid: parseInt(readerMatch[1], 10),
-        startPage: Number.isFinite(hashPage) && hashPage > 0 ? hashPage : 1,
+        startPage: normalizedHashPage || 1,
         isReaderPage: true
       };
     }
@@ -32,12 +120,76 @@
     if (galleryMatch) {
       return {
         gid: parseInt(galleryMatch[1], 10),
-        startPage: null,
+        startPage: normalizedHashPage,
         isReaderPage: false
       };
     }
 
     return null;
+  }
+
+  function suppressNativeReaderInit() {
+    const info = getPathInfo();
+    if (!info || !info.isReaderPage) return;
+
+    try {
+      window.init = function() {};
+      if (document.body) {
+        document.body.removeAttribute('onload');
+      }
+    } catch {}
+  }
+
+  function installReaderBootMask() {
+    const info = getPathInfo();
+    if (!info || !info.isReaderPage) return;
+
+    try {
+      document.documentElement.classList.add('gallery-reader-hitomi-boot');
+
+      if (!document.getElementById('gallery-reader-hitomi-boot-style')) {
+        const style = document.createElement('style');
+        style.id = 'gallery-reader-hitomi-boot-style';
+        style.textContent = [
+          'html.gallery-reader-hitomi-boot,',
+          'html.gallery-reader-hitomi-boot body {',
+          '  background: #111317 !important;',
+          '}',
+          'html.gallery-reader-hitomi-boot body > :not(#eh-reader-container) {',
+          '  visibility: hidden !important;',
+          '}',
+          'html.gallery-reader-hitomi-boot #eh-reader-container,',
+          'html.gallery-reader-hitomi-boot #eh-reader-container * {',
+          '  visibility: visible !important;',
+          '}'
+        ].join('\n');
+        (document.head || document.documentElement).appendChild(style);
+      }
+    } catch {}
+
+    const stripNativeOnload = () => {
+      try {
+        if (document.body) {
+          document.body.removeAttribute('onload');
+        }
+      } catch {}
+    };
+
+    stripNativeOnload();
+    try {
+      const observer = new MutationObserver(() => {
+        stripNativeOnload();
+        if (document.getElementById('eh-reader-container')) {
+          try {
+            document.documentElement.classList.remove('gallery-reader-hitomi-boot');
+            const style = document.getElementById('gallery-reader-hitomi-boot-style');
+            if (style) style.remove();
+          } catch {}
+          observer.disconnect();
+        }
+      });
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+    } catch {}
   }
 
   let dataCache = null;
@@ -65,14 +217,13 @@
     return url;
   }
 
-  function extFromName(file) {
-    const name = (file && file.name) ? String(file.name) : '';
-    const m = name.match(/\.([a-z0-9]+)$/i);
-    return m ? m[1].toLowerCase() : 'jpg';
+  function readerUrlFor(gid, page) {
+    const pageNum = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
+    return `${window.location.origin}/reader/${gid}.html#${pageNum}`;
   }
 
   const HITOMI_MEDIA_DOMAIN = 'gold-usergeneratedcontent.net';
-  const DEFAULT_GG_B = '1774173602/';
+  const DEFAULT_GG_B = '1780909201/';
   let ggMetaCache = null;
   let ggMetaPromise = null;
 
@@ -90,16 +241,14 @@
       try {
         const host = detectAssetHost();
         const url = `https://${host}/gg.js`;
-        const resp = await fetch(url, {
-          method: 'GET',
-          credentials: 'omit',
-          cache: 'no-store'
-        });
-        if (!resp.ok) throw new Error(`fetch gg.js failed: ${resp.status}`);
-
-        const text = await resp.text();
+        const text = await fetchHitomiText(url);
         const bMatch = text.match(/\bb:\s*'([^']+)'/);
         const routePrefix = bMatch ? bMatch[1] : DEFAULT_GG_B;
+
+        const defaultMatch = text.match(/var\s+o\s*=\s*(\d+)/);
+        const caseValueMatch = text.match(/o\s*=\s*(\d+)\s*;\s*break/);
+        const defaultM = defaultMatch ? parseInt(defaultMatch[1], 10) : 1;
+        const caseM = caseValueMatch ? parseInt(caseValueMatch[1], 10) : 0;
 
         const mSet = new Set();
         let m;
@@ -108,11 +257,11 @@
           mSet.add(parseInt(m[1], 10));
         }
 
-        ggMetaCache = { routePrefix, mSet };
+        ggMetaCache = { routePrefix, mSet, defaultM, caseM };
         return ggMetaCache;
       } catch (e) {
-        debugLog('[EH Reader] gg.js parse fallback:', e && e.message ? e.message : e);
-        ggMetaCache = { routePrefix: DEFAULT_GG_B, mSet: new Set() };
+        debugLog('[Gallery Reader] gg.js parse fallback:', e && e.message ? e.message : e);
+        ggMetaCache = { routePrefix: DEFAULT_GG_B, mSet: new Set(), defaultM: 1, caseM: 0 };
         return ggMetaCache;
       }
     })().finally(() => {
@@ -122,19 +271,31 @@
     return ggMetaPromise;
   }
 
+  function ggValueFromHash(hash, ggMeta) {
+    const rv = hashRouteValue(hash);
+    if (!Number.isFinite(rv)) return 1;
+
+    const defaultM = ggMeta && Number.isFinite(ggMeta.defaultM) ? ggMeta.defaultM : 1;
+    const caseM = ggMeta && Number.isFinite(ggMeta.caseM) ? ggMeta.caseM : 0;
+    return ggMeta && ggMeta.mSet && ggMeta.mSet.has(rv) ? caseM : defaultM;
+  }
+
   function imageSubdomainFromHash(hash, dir, ggMeta) {
-    let prefix = '';
-    if (dir === 'webp') {
-      prefix = 'w';
-    } else if (dir === 'avif') {
-      prefix = 'a';
+    const rv = hashRouteValue(hash);
+    if (!Number.isFinite(rv)) {
+      if (dir === 'webp') return 'w1';
+      if (dir === 'avif') return 'a1';
+      return '1';
     }
 
-    const rv = hashRouteValue(hash);
-    if (!Number.isFinite(rv)) return `${prefix}1`;
-
-    const mapped = ggMeta && ggMeta.mSet && ggMeta.mSet.has(rv) ? 1 : 0;
-    return `${prefix}${1 + mapped}`;
+    const ggM = ggValueFromHash(hash, ggMeta);
+    if (dir === 'webp') {
+      return `w${1 + ggM}`;
+    }
+    if (dir === 'avif') {
+      return `a${1 + ggM}`;
+    }
+    return `${1 + ggM}`;
   }
 
   function fullPathFromHash(hash, ggMeta) {
@@ -144,6 +305,12 @@
     if (!Number.isFinite(rv)) return '';
     const routePrefix = (ggMeta && ggMeta.routePrefix) ? ggMeta.routePrefix : DEFAULT_GG_B;
     return `${routePrefix}${rv}/${h}`;
+  }
+
+  function realFullPathFromHash(hash) {
+    const h = String(hash || '').toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(h)) return '';
+    return `${h.slice(-1)}/${h.slice(-3, -1)}/${h}`;
   }
 
   function buildImageUrlByDir(file, ggMeta, dir, ext) {
@@ -158,28 +325,67 @@
     return `https://${sub}.${HITOMI_MEDIA_DOMAIN}/${dir}/${path}.${ext}`;
   }
 
-  function fallbackLegacyUrl(file) {
+  function buildThumbnailUrlBySubdomain(file, sub, dir, ext) {
     if (!file || !file.hash) return '';
-    const h = String(file.hash);
-    if (!h || h.length < 3) return '';
-    const d1 = h.slice(-1);
-    const d2 = h.slice(-3, -1);
-    const ext = extFromName(file);
-    return `https://a.hitomi.la/images/${d1}/${d2}/${h}.${ext}`;
+    const path = realFullPathFromHash(file.hash);
+    if (!path) return '';
+    return `https://${sub}.${HITOMI_MEDIA_DOMAIN}/${dir}/${path}.${ext}`;
+  }
+
+  function thumbnailSubdomainFromHash(hash, ggMeta) {
+    const ggM = ggValueFromHash(hash, ggMeta);
+    return `${String.fromCharCode(97 + ggM)}tn`;
+  }
+
+  function makeThumbnailSets(file, ggMeta) {
+    if (!file || !file.hash) return [];
+    const preferredSub = thumbnailSubdomainFromHash(file.hash, ggMeta);
+    const subs = [preferredSub, preferredSub === 'atn' ? 'btn' : 'atn'];
+    const seen = new Set();
+
+    return subs.filter((sub) => {
+      if (!sub || seen.has(sub)) return false;
+      seen.add(sub);
+      return true;
+    }).map((sub) => ({
+      sub,
+      avif1x: file.hasavif ? buildThumbnailUrlBySubdomain(file, sub, 'avifsmallsmalltn', 'avif') : '',
+      avif2x: file.hasavif ? buildThumbnailUrlBySubdomain(file, sub, 'avifsmalltn', 'avif') : '',
+      webp1x: buildThumbnailUrlBySubdomain(file, sub, 'webpsmallsmalltn', 'webp'),
+      webp2x: buildThumbnailUrlBySubdomain(file, sub, 'webpsmalltn', 'webp')
+    }));
+  }
+
+  function makeThumbnailCandidates(file, ggMeta) {
+    const out = [];
+    makeThumbnailSets(file, ggMeta).forEach((set) => {
+      if (set.avif1x) out.push(set.avif1x);
+      if (set.avif2x) out.push(set.avif2x);
+      out.push(set.webp1x);
+      out.push(set.webp2x);
+    });
+
+    const uniq = [];
+    const seen = new Set();
+    for (const u of out) {
+      const n = normalizeUrl(u);
+      if (!n || seen.has(n)) continue;
+      seen.add(n);
+      uniq.push(n);
+    }
+    return uniq;
   }
 
   function makeImageCandidates(file, ggMeta) {
-    const ext = extFromName(file);
     const out = [];
 
     if (file && file.hasavif) {
       out.push(buildImageUrlByDir(file, ggMeta, 'avif', 'avif'));
     }
-    if (file && file.haswebp) {
-      out.push(buildImageUrlByDir(file, ggMeta, 'webp', 'webp'));
-    }
-    out.push(buildImageUrlByDir(file, ggMeta, 'images', ext));
-    out.push(fallbackLegacyUrl(file));
+    // Hitomi's reader always uses WebP as the <img> fallback under AVIF <source>.
+    out.push(buildImageUrlByDir(file, ggMeta, 'webp', 'webp'));
+    // Avoid legacy JPG fallback in-reader: it is noisy on current CDN routing and the
+    // official reader uses AVIF/WebP for these galleries.
 
     const uniq = [];
     const seen = new Set();
@@ -259,16 +465,7 @@
     const host = detectAssetHost();
     const url = `https://${host}/galleries/${gid}.js`;
 
-    const resp = await fetch(url, {
-      method: 'GET',
-      credentials: 'omit',
-      cache: 'no-store'
-    });
-    if (!resp.ok) {
-      throw new Error(`fetch gallery script failed: ${resp.status}`);
-    }
-
-    const scriptText = await resp.text();
+    const scriptText = await fetchHitomiText(url);
     const galleryinfo = parseGalleryInfoFromScript(scriptText);
     if (!galleryinfo || !Array.isArray(galleryinfo.files) || galleryinfo.files.length === 0) {
       throw new Error('parse galleryinfo failed');
@@ -280,9 +477,14 @@
     const ggMeta = await resolveGgMeta();
     return files.map((f) => {
       const candidates = makeImageCandidates(f, ggMeta);
+      const thumbnails = makeThumbnailCandidates(f, ggMeta);
+      const thumbnailSets = makeThumbnailSets(f, ggMeta);
       return {
         primary: candidates[0] || '',
-        candidates
+        candidates,
+        thumbnail: thumbnails[0] || '',
+        thumbnails,
+        thumbnailSets
       };
     });
   }
@@ -313,7 +515,7 @@
           dataCache = detail;
           return detail;
         } catch (e) {
-          debugLog('[EH Reader] hitomi fetch retry:', i + 1, e && e.message ? e.message : e);
+          debugLog('[Gallery Reader] hitomi fetch retry:', i + 1, e && e.message ? e.message : e);
           await new Promise((r) => setTimeout(r, 350));
         }
       }
@@ -336,10 +538,17 @@
       const plan = detail.imagePlan && detail.imagePlan[idx] ? detail.imagePlan[idx] : null;
       const url = normalizeUrl(plan && plan.primary ? plan.primary : '');
       const altUrls = (plan && Array.isArray(plan.candidates)) ? plan.candidates.filter((u) => u && u !== url) : [];
+      const width = f && Number.isFinite(f.width) ? f.width : 0;
+      const height = f && Number.isFinite(f.height) ? f.height : 0;
       return {
         n: String(idx + 1),
         url,
-        altUrls
+        altUrls,
+        thumbUrl: normalizeUrl(plan && plan.thumbnail ? plan.thumbnail : ''),
+        thumbUrls: (plan && Array.isArray(plan.thumbnails)) ? plan.thumbnails : [],
+        thumbSets: (plan && Array.isArray(plan.thumbnailSets)) ? plan.thumbnailSets : [],
+        width,
+        height
       };
     });
 
@@ -394,7 +603,7 @@
     try {
       const data = await buildReaderData(startAt);
       if (!data || !data.imagelist || data.imagelist.length === 0) {
-        console.warn('[EH Reader] hitomi bootstrap failed: no gallery data');
+        console.warn('[Gallery Reader] hitomi bootstrap failed: no gallery data');
         return;
       }
 
@@ -411,58 +620,34 @@
         }
       };
 
+      await ensureReaderContentScript();
+      await waitForBody();
       document.dispatchEvent(new CustomEvent('ehGalleryReaderReady', { detail: data }));
-      debugLog('[EH Reader] hitomi reader event dispatched');
+      debugLog('[Gallery Reader] hitomi reader event dispatched');
     } finally {
       launchInFlight = false;
     }
   }
 
-  function addLaunchButton() {
+  function bindNativeEntryPoints() {
     const info = getPathInfo();
-    if (!info || document.getElementById('eh-hitomi-launch')) return;
+    if (!info) return;
 
     const isReaderPage = !!info.isReaderPage;
     const startPage = (typeof info.startPage === 'number' && info.startPage >= 1) ? info.startPage : undefined;
 
     if (!isReaderPage) {
       const readBtn = document.getElementById('read-online-button');
-      if (readBtn) {
-        const btn = document.createElement('a');
-        btn.id = 'eh-hitomi-launch';
-        btn.href = '#';
-        btn.innerHTML = '<h1>EH Modern Reader</h1>';
-        btn.style.marginTop = '8px';
-        btn.addEventListener('click', (e) => {
+      if (readBtn && readBtn.dataset.galleryReaderBound !== 'true') {
+        readBtn.dataset.galleryReaderBound = 'true';
+        readBtn.setAttribute('href', readerUrlFor(info.gid, startPage || 1));
+        readBtn.addEventListener('click', (e) => {
           e.preventDefault();
-          launchReader(startPage).catch(() => {});
-        });
-        readBtn.parentNode.insertBefore(btn, readBtn.nextSibling);
-        return;
+          e.stopImmediatePropagation();
+          window.location.assign(readerUrlFor(info.gid, startPage || 1));
+        }, true);
       }
     }
-
-    // reader 页或按钮容器不存在时，降级为悬浮按钮
-    const floating = document.createElement('button');
-    floating.id = 'eh-hitomi-launch';
-    floating.textContent = 'EH Modern Reader';
-    floating.style.cssText = [
-      'position:fixed',
-      'top:12px',
-      'right:12px',
-      'z-index:2147483647',
-      'padding:8px 12px',
-      'border:none',
-      'border-radius:8px',
-      'background:#1f7ae0',
-      'color:#fff',
-      'font-size:13px',
-      'cursor:pointer'
-    ].join(';');
-    floating.addEventListener('click', () => {
-      launchReader(startPage).catch(() => {});
-    });
-    document.body.appendChild(floating);
   }
 
   function interceptClicks() {
@@ -471,19 +656,24 @@
     // 缩略图点击：通常是 /reader/{gid}.html#N
     document.addEventListener('click', (e) => {
       if (e.defaultPrevented || shouldBypass(e)) return;
-      const a = e.target && e.target.closest ? e.target.closest('a[href*="/reader/"]') : null;
+      const a = e.target && e.target.closest ? e.target.closest('a[href*="/reader/"], #read-online-button') : null;
       if (!a) return;
 
       const href = a.getAttribute('href') || '';
       const m = href.match(/\/reader\/(\d+)\.html(?:#(\d+))?/i);
-      if (!m) return;
 
       const path = getPathInfo();
       const gid = path ? path.gid : null;
-      if (!gid || parseInt(m[1], 10) !== gid) return;
+      if (!gid) return;
+      if (m && parseInt(m[1], 10) !== gid) return;
 
       e.preventDefault();
-      const pageNum = m[2] ? parseInt(m[2], 10) : 1;
+      e.stopImmediatePropagation();
+      const pageNum = m && m[2] ? parseInt(m[2], 10) : ((path && path.startPage) || 1);
+      if (!path.isReaderPage) {
+        window.location.assign(readerUrlFor(gid, pageNum));
+        return;
+      }
       launchReader(pageNum).catch(() => {});
     }, true);
   }
@@ -498,13 +688,20 @@
 
   function boot() {
     if (!getPathInfo()) return;
-    resolveData().catch(() => {});
-    addLaunchButton();
+    installReaderBootMask();
+    suppressNativeReaderInit();
+    if (getPathInfo().isReaderPage) {
+      resolveData().catch(() => {});
+    }
+    bindNativeEntryPoints();
     interceptClicks();
     autoLaunchOnReaderPage();
   }
 
-  if (document.readyState === 'loading') {
+  const initialInfo = getPathInfo();
+  if (initialInfo && initialInfo.isReaderPage) {
+    boot();
+  } else if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);
   } else {
     boot();
