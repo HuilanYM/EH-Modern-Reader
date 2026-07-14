@@ -66,6 +66,7 @@ body.eh-dark-mode #eh-image-container {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
   padding: 0 16px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   z-index: 100;
@@ -133,8 +134,49 @@ body.eh-dark-mode #eh-image-container {
   display: none !important; /* 隐藏顶部当前页/总页数，保留节点供脚本引用避免空指针 */
 }
 
-body.eh-dark-mode #eh-page-info {
+/* 图片信息栏（头部居中，显示文件名·分辨率） */
+.eh-image-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 400px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.eh-image-info-filename {
+  font-size: 14px;
+  font-weight: 500;
+  color: #222;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+
+.eh-image-info-sep {
+  font-size: 13px;
   color: #aaa;
+  flex-shrink: 0;
+}
+
+.eh-image-info-resolution {
+  font-size: 13px;
+  color: #666;
+  flex-shrink: 0;
+  font-weight: 400;
+}
+
+body.eh-dark-mode .eh-image-info-filename {
+  color: #e0e0e0;
+}
+
+body.eh-dark-mode .eh-image-info-resolution {
+  color: #999;
+}
+
+body.eh-dark-mode .eh-image-info-sep {
+  color: #666;
 }
 
 /* ==================== 按钮样式 ==================== */
@@ -2180,6 +2222,25 @@ body.eh-dark-mode .eh-toggle-switch input[type="checkbox"]:checked + .eh-toggle-
 
   .eh-nav-btn {
     opacity: 0.48;
+  }
+
+  .eh-image-info {
+    gap: 4px;
+    max-width: 150px;
+  }
+
+  .eh-image-info-filename {
+    font-size: 12px;
+    max-width: 80px;
+  }
+
+  .eh-image-info-resolution {
+    font-size: 11px;
+    display: none;
+  }
+
+  .eh-image-info-sep {
+    display: none;
   }
 }
 

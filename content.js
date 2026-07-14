@@ -323,8 +323,20 @@
           </div>
           <div class="eh-header-center">
             <span id="eh-page-info" title="${tr('shortcutsHint')}">1 / ${pageData.pagecount}</span>
+            <div id="eh-image-info" class="eh-image-info" style="display:none">
+              <span id="eh-image-filename" class="eh-image-info-filename"></span>
+              <span id="eh-image-info-sep" class="eh-image-info-sep" style="display:none">·</span>
+              <span id="eh-image-resolution" class="eh-image-info-resolution"></span>
+            </div>
           </div>
           <div class="eh-header-right">
+            <a id="eh-image-download" class="eh-icon-btn" title="下载原图" href="#" download>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+            </a>
             <button id="eh-reverse-btn" class="eh-icon-btn" title="${tr('reverseReading')}">
               <span style="font-size: 20px; font-weight: bold;">⇄</span>
             </button>
@@ -2297,6 +2309,90 @@
     }
 
     // 更新缩略图高亮（优化性能，只操作当前和上一个）
+    function updateImageInfo(pageNum) {
+      const infoBar = document.getElementById('eh-image-info');
+      const filenameEl = document.getElementById('eh-image-filename');
+      const resolutionEl = document.getElementById('eh-image-resolution');
+      const downloadEl = document.getElementById('eh-image-download');
+
+      // 获取图片数据
+      const imageData = state.imagelist && state.imagelist[pageNum - 1];
+
+      // 文件名：优先 imageData.n，如果只是纯数字则尝试从 URL 提取
+      let filename = '';
+      const rawName = (imageData && imageData.n) ? String(imageData.n) : '';
+
+      // 从缓存 URL 提取文件名（作为备选）
+      const cachedUrl = realUrlCache && realUrlCache.get(pageNum);
+      const urlFilename = extractFilenameFromUrl(cachedUrl);
+
+      if (rawName && !/^\d+$/.test(rawName)) {
+        // imageData.n 存在且不是纯数字，直接使用
+        filename = rawName;
+      } else if (urlFilename) {
+        filename = urlFilename;
+      } else if (rawName) {
+        filename = rawName + `.jpg`;
+      } else {
+        filename = `第 ${pageNum} 页`;
+      }
+
+      if (filenameEl) filenameEl.textContent = filename;
+
+      // 分辨率
+      const sepEl = document.getElementById('eh-image-info-sep');
+      const size = state.imageSizes && state.imageSizes[pageNum - 1];
+      if (size && size.width > 0 && size.height > 0) {
+        if (resolutionEl) resolutionEl.textContent = `${size.width} × ${size.height}`;
+        if (sepEl) sepEl.style.display = 'inline';
+      } else if (elements.currentImage && elements.currentImage.naturalWidth > 0) {
+        if (resolutionEl) resolutionEl.textContent = `${elements.currentImage.naturalWidth} × ${elements.currentImage.naturalHeight}`;
+        if (sepEl) sepEl.style.display = 'inline';
+      } else {
+        if (resolutionEl) resolutionEl.textContent = '';
+        if (sepEl) sepEl.style.display = 'none';
+      }
+
+      // 下载链接
+      if (downloadEl) {
+        if (cachedUrl) {
+          downloadEl.href = cachedUrl;
+          downloadEl.download = filename;
+        } else {
+          downloadEl.href = '#';
+          // 异步获取真实URL并更新
+          (async () => {
+            try {
+              const pageUrl = getImageUrl(pageNum - 1);
+              if (!pageUrl) return;
+              const result = await fetchRealImageUrlAndToken(pageUrl, new AbortController().signal);
+              if (result && result.url) {
+                downloadEl.href = result.url;
+                downloadEl.download = extractFilenameFromUrl(result.url) || filename;
+              }
+            } catch {}
+          })();
+        }
+      }
+
+      // 显示信息栏
+      if (infoBar) infoBar.style.display = 'flex';
+    }
+
+    // 从 URL 末尾提取文件名
+    function extractFilenameFromUrl(url) {
+      if (!url) return '';
+      try {
+        const pathname = new URL(url).pathname;
+        const segments = pathname.split('/');
+        const last = segments[segments.length - 1];
+        if (last && /\.[a-z]{3,4}$/i.test(last)) {
+          return decodeURIComponent(last);
+        }
+      } catch {}
+      return '';
+    }
+
     function updateThumbnailHighlight(pageNum) {
       const thumbnails = document.querySelectorAll('.eh-thumbnail');
       if (!thumbnails || thumbnails.length === 0) return;
@@ -2372,6 +2468,7 @@
           }
         }
       }
+      updateImageInfo(pageNum);
     }
 
     // 生成缩略图（懒加载优化版）
