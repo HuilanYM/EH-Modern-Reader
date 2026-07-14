@@ -666,12 +666,48 @@ body:not(.eh-dark-mode) #eh-bottom-menu {
 }
 
 /* 缩略图容器 */
-
 .eh-thumbnails-container {
-  height: 160px;  /* 增高以完整显示缩略图 */
+  height: 160px;
   padding: 6px 0 6px 0;
   overflow: hidden;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  position: relative;
+}
+
+/* 画廊概览触发按钮（缩略图栏右侧向上箭头） */
+.eh-overview-btn {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: rgba(255,255,255,0.12);
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, transform 0.2s;
+  color: rgba(255,255,255,0.7);
+  z-index: 5;
+}
+
+.eh-overview-btn:hover {
+  background: rgba(255,255,255,0.25);
+  color: #fff;
+  transform: translateY(-50%) scale(1.1);
+}
+
+body:not(.eh-dark-mode) .eh-overview-btn {
+  background: rgba(0,0,0,0.06);
+  color: rgba(0,0,0,0.5);
+}
+
+body:not(.eh-dark-mode) .eh-overview-btn:hover {
+  background: rgba(0,0,0,0.12);
+  color: #333;
 }
 body:not(.eh-dark-mode) .eh-thumbnails-container { border-bottom-color: rgba(0,0,0,0.06); }
 
@@ -714,6 +750,172 @@ body:not(.eh-dark-mode) .eh-thumbnails-horizontal::-webkit-scrollbar-thumb {
 
 .eh-thumbnails-horizontal::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.3);
+}
+
+/* ==================== 画廊概览面板 ==================== */
+
+.eh-overview-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: rgba(0,0,0,0.92);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.eh-overview-panel.eh-overview-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.eh-overview-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.eh-overview-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.eh-overview-count {
+  font-size: 13px;
+  color: rgba(255,255,255,0.5);
+  margin-left: auto;
+  margin-right: 8px;
+}
+
+#eh-overview-close {
+  color: #ccc;
+}
+#eh-overview-close:hover {
+  background: rgba(255,255,255,0.1);
+}
+
+/* 概览网格容器：16:9 最大尺寸适配 */
+.eh-overview-grid {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+  align-content: start;
+  /* 最大宽度限制保持适宜阅读密度 */
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.eh-overview-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  background: rgba(255,255,255,0.04);
+  padding: 4px;
+}
+
+.eh-overview-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  background: rgba(255,255,255,0.08);
+}
+
+.eh-overview-img {
+  width: 100%;
+  aspect-ratio: 2/3;
+  object-fit: cover;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.03);
+  display: block;
+}
+
+.eh-overview-label {
+  font-size: 11px;
+  color: rgba(255,255,255,0.5);
+  font-weight: 500;
+}
+
+/* 浅色模式 */
+body:not(.eh-dark-mode) .eh-overview-panel {
+  background: rgba(255,255,255,0.95);
+  backdrop-filter: blur(8px);
+}
+
+body:not(.eh-dark-mode) .eh-overview-header {
+  border-bottom-color: rgba(0,0,0,0.06);
+}
+
+body:not(.eh-dark-mode) .eh-overview-title {
+  color: #222;
+}
+
+body:not(.eh-dark-mode) .eh-overview-count {
+  color: rgba(0,0,0,0.4);
+}
+
+body:not(.eh-dark-mode) #eh-overview-close {
+  color: #555;
+}
+
+body:not(.eh-dark-mode) .eh-overview-item {
+  background: rgba(0,0,0,0.03);
+}
+
+body:not(.eh-dark-mode) .eh-overview-item:hover {
+  background: rgba(0,0,0,0.06);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+body:not(.eh-dark-mode) .eh-overview-label {
+  color: rgba(0,0,0,0.4);
+}
+
+/* 响应式适配 */
+@media (min-width: 1400px) {
+  .eh-overview-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+    max-width: 1300px;
+  }
+}
+
+@media (max-width: 640px) {
+  .eh-overview-header {
+    padding: 10px 14px;
+  }
+  .eh-overview-grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
+    padding: 12px;
+  }
+}
+
+@media (max-width: 380px) {
+  .eh-overview-grid {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 6px;
+    padding: 8px;
+  }
+  .eh-overview-label {
+    font-size: 10px;
+  }
 }
 
 /* ==================== 缩略图 ==================== */

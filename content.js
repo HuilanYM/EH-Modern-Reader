@@ -433,6 +433,11 @@
           <!-- 缩略图横向滚动区 -->
           <div id="eh-thumbnails-container" class="eh-thumbnails-container">
             <div id="eh-thumbnails" class="eh-thumbnails-horizontal"></div>
+            <button id="eh-overview-btn" class="eh-overview-btn" title="画廊概览">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="18 15 12 9 6 15"/>
+              </svg>
+            </button>
           </div>
 
           <!-- 进度条区 -->
@@ -452,6 +457,21 @@
             <span id="eh-progress-total" class="eh-progress-number">${pageData.pagecount}</span>
           </div>
         </footer>
+
+        <!-- 画廊概览面板 (16:9 网格预览) -->
+        <div id="eh-overview-panel" class="eh-overview-panel">
+          <div class="eh-overview-header">
+            <span class="eh-overview-title">画廊概览</span>
+            <span id="eh-overview-count" class="eh-overview-count"></span>
+            <button id="eh-overview-close" class="eh-icon-btn" title="关闭概览">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="18 6 6 18"/>
+                <polyline points="6 6 18 18"/>
+              </svg>
+            </button>
+          </div>
+          <div id="eh-overview-grid" class="eh-overview-grid"></div>
+        </div>
 
         <!-- 设置面板 -->
         <div id="eh-settings-panel" class="eh-panel eh-hidden">
@@ -897,6 +917,11 @@
     // thumbnailsToggleBtn: 已移除
       reverseBtn: document.getElementById('eh-reverse-btn'),
       fitModeBtn: document.getElementById('eh-fitmode-btn'),
+      overviewBtn: document.getElementById('eh-overview-btn'),
+      overviewPanel: document.getElementById('eh-overview-panel'),
+      overviewGrid: document.getElementById('eh-overview-grid'),
+      overviewClose: document.getElementById('eh-overview-close'),
+      overviewCount: document.getElementById('eh-overview-count'),
       settingsPanel: document.getElementById('eh-settings-panel'),
       settingsCloseBtn: document.getElementById('eh-settings-close'),
       resetSettingsBtn: document.getElementById('eh-reset-settings'),
@@ -2482,6 +2507,110 @@
       }
       updateImageInfo(pageNum);
       reapplyFitMode();
+    }
+
+    // ========== 画廊概览面板 ==========
+    let overviewBuilt = false;
+
+    function buildOverviewGrid() {
+      if (!elements.overviewGrid) return;
+      if (overviewBuilt) return;
+      overviewBuilt = true;
+
+      const total = state.pageCount;
+      elements.overviewCount.textContent = `共 ${total} 页`;
+
+      const fragment = document.createDocumentFragment();
+      for (let i = 1; i <= total; i++) {
+        const item = document.createElement('div');
+        item.className = 'eh-overview-item';
+        item.dataset.page = i;
+
+        const img = document.createElement('img');
+        img.className = 'eh-overview-img';
+        img.loading = 'lazy';
+        img.draggable = false;
+        img.alt = `第 ${i} 页`;
+        // 先用占位，懒加载时再填充 src
+        img.setAttribute('data-page', i);
+
+        const label = document.createElement('span');
+        label.className = 'eh-overview-label';
+        label.textContent = i;
+
+        item.appendChild(img);
+        item.appendChild(label);
+
+        item.addEventListener('click', () => {
+          const pageNum = parseInt(item.dataset.page);
+          if (pageNum >= 1 && pageNum <= state.pageCount) {
+            closeOverview();
+            scheduleShowPage(pageNum, { instant: true });
+          }
+        });
+
+        fragment.appendChild(item);
+      }
+      elements.overviewGrid.appendChild(fragment);
+
+      // 懒加载缩略图
+      lazyLoadOverviewThumbnails();
+    }
+
+    function openOverview() {
+      const panel = elements.overviewPanel;
+      if (!panel) return;
+      buildOverviewGrid();
+      panel.classList.add('eh-overview-visible');
+      lazyLoadOverviewThumbnails(); // 每次打开也触发加载可见区域
+    }
+
+    function closeOverview() {
+      const panel = elements.overviewPanel;
+      if (!panel) return;
+      panel.classList.remove('eh-overview-visible');
+    }
+
+    function toggleOverview() {
+      const panel = elements.overviewPanel;
+      if (!panel) return;
+      if (panel.classList.contains('eh-overview-visible')) {
+        closeOverview();
+      } else {
+        openOverview();
+      }
+    }
+
+    // 懒加载概览面板中可见的缩略图
+    function lazyLoadOverviewThumbnails() {
+      if (!elements.overviewGrid || !elements.overviewPanel) return;
+      const panel = elements.overviewPanel;
+      if (!panel.classList.contains('eh-overview-visible')) return;
+
+      const imgs = elements.overviewGrid.querySelectorAll('.eh-overview-img[data-page]:not([src]), .eh-overview-img[data-page][src=""]');
+      const panelRect = panel.getBoundingClientRect();
+
+      imgs.forEach(img => {
+        const rect = img.getBoundingClientRect();
+        // 检查是否在面板可视区域附近（含缓冲）
+        const margin = 200;
+        if (rect.bottom >= panelRect.top - margin && rect.top <= panelRect.bottom + margin) {
+          const pageNum = parseInt(img.getAttribute('data-page'));
+          if (!pageNum || pageNum < 1 || pageNum > state.pageCount) return;
+          const imageData = state.imagelist && state.imagelist[pageNum - 1];
+          if (!imageData) return;
+
+          // 尝试从缓存获取缩略图
+          const existingThumb = document.querySelector(`.eh-thumbnail[data-page='${pageNum}'] img`);
+          if (existingThumb && existingThumb.src) {
+            img.src = existingThumb.src;
+          } else if (imageData.t) {
+            img.src = imageData.t;
+          }
+          // 加载过一次就清除标记
+          img.removeAttribute('data-page');
+        }
+      });
     }
 
     // 生成缩略图（懒加载优化版）
@@ -4498,6 +4627,32 @@
         e.stopPropagation();
         cycleFitMode();
       };
+    }
+
+    if (elements.overviewBtn) {
+      elements.overviewBtn.onclick = (e) => {
+        e.stopPropagation();
+        toggleOverview();
+      };
+    }
+
+    if (elements.overviewClose) {
+      elements.overviewClose.onclick = (e) => {
+        e.stopPropagation();
+        closeOverview();
+      };
+    }
+
+    // 点击面板背景关闭 + 滚动懒加载
+    if (elements.overviewPanel) {
+      elements.overviewPanel.addEventListener('click', (e) => {
+        if (e.target === elements.overviewPanel) {
+          closeOverview();
+        }
+      });
+      elements.overviewPanel.addEventListener('scroll', () => {
+        lazyLoadOverviewThumbnails();
+      }, { passive: true });
     }
 
     // 进度条的 onchange 统一在后文的“进度条拖动/改变事件”中处理，避免重复绑定
