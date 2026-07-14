@@ -339,8 +339,9 @@
             </a>
             <button id="eh-fitmode-btn" class="eh-icon-btn" title="填充模式: 适应高度 (W)" data-fitmode="height">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m10 0h3a2 2 0 0 0 2-2v-3"/>
-                <path d="M12 10v4m-2-2h4"/>
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <polyline points="9 8 12 5 15 8"/>
+                <polyline points="9 16 12 19 15 16"/>
               </svg>
             </button>
             <button id="eh-reverse-btn" class="eh-icon-btn" title="${tr('reverseReading')}">
@@ -5057,11 +5058,11 @@
       const svg = btn.querySelector('svg');
       if (!svg) return;
       if (mode === 'height') {
-        svg.innerHTML = '<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m10 0h3a2 2 0 0 0 2-2v-3"/><path d="M12 10v4m-2-2h4"/>';
+        svg.innerHTML = '<line x1="12" y1="5" x2="12" y2="19"/><polyline points="9 8 12 5 15 8"/><polyline points="9 16 12 19 15 16"/>';
       } else if (mode === 'width') {
-        svg.innerHTML = '<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m10 0h3a2 2 0 0 0 2-2v-3"/><path d="M10 12h4m-2-2v4"/>';
+        svg.innerHTML = '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="8 9 5 12 8 15"/><polyline points="16 9 19 12 16 15"/>';
       } else {
-        svg.innerHTML = '<circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M1 12h2m18 0h2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M4.22 19.78l1.42-1.42m12.72-12.72l1.42-1.42"/>';
+        svg.innerHTML = '<rect x="5" y="5" width="14" height="14"/><line x1="5" y1="5" x2="8" y2="8"/><line x1="19" y1="5" x2="16" y2="8"/><line x1="5" y1="19" x2="8" y2="16"/><line x1="19" y1="19" x2="16" y2="16"/>';
       }
     }
 
@@ -5078,6 +5079,9 @@
       // 鼠标滚轮翻页 (单页/单页纵向模式下) 上一页/下一页
       elements.viewer.addEventListener('wheel', (e) => {
         if (state.settings.readMode !== 'single' && state.settings.readMode !== 'single-vertical') return; // 仅单页类模式翻页
+        // fit-width / fit-original 模式：不拦截滚轮，让原生滚动生效
+        const fitMode = state.settings.fitMode || 'height';
+        if (fitMode === 'width' || fitMode === 'original') return;
         const delta = e.deltaY;
         // 反向阅读：滚轮向下（delta > 0）应该向前翻（-1），正常时向后翻（+1）
         const direction = state.settings.reverse ? -1 : 1;

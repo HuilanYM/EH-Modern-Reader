@@ -1072,6 +1072,7 @@ body.eh-dark-mode #eh-image-container {
 .eh-fit-width #eh-viewer {
   overflow-y: auto;
   overflow-x: hidden;
+  align-items: flex-start; /* 🔑 图片从顶部开始，不居中 */
 }
 
 .eh-fit-width #eh-image-container {
@@ -1082,6 +1083,7 @@ body.eh-dark-mode #eh-image-container {
 
 .eh-fit-width #eh-current-image {
   max-height: none;
+  width: 100%;
   height: auto;
   object-fit: none;
 }
@@ -1089,6 +1091,8 @@ body.eh-dark-mode #eh-image-container {
 /* fit-original：原始像素尺寸，双向滚动 */
 .eh-fit-original #eh-viewer {
   overflow: auto;
+  align-items: flex-start;
+  justify-content: flex-start; /* 🔑 图片从左上角开始 */
 }
 
 .eh-fit-original #eh-image-container {
@@ -1110,6 +1114,19 @@ body.eh-dark-mode #eh-image-container {
 .eh-fit-width .eh-nav-btn,
 .eh-fit-original .eh-nav-btn {
   display: none;
+}
+
+/* fit 模式下拖拽翻页禁用，让原生滚动接管触摸 */
+.eh-fit-width .eh-page-slider,
+.eh-fit-original .eh-page-slider {
+  pointer-events: none;
+}
+
+/* fit 模式禁用图片的 transition transform 干扰原生滚动 */
+.eh-fit-width #eh-current-image,
+.eh-fit-original #eh-current-image {
+  transition: opacity 0.25s ease;
+  transform: none !important;
 }
 
 /* 旧加载动画已移除，统一使用环形进度覆盖层 */
