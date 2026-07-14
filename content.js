@@ -337,6 +337,12 @@
                 <line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
             </a>
+            <button id="eh-fitmode-btn" class="eh-icon-btn" title="填充模式: 适应高度 (W)" data-fitmode="height">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m10 0h3a2 2 0 0 0 2-2v-3"/>
+                <path d="M12 10v4m-2-2h4"/>
+              </svg>
+            </button>
             <button id="eh-reverse-btn" class="eh-icon-btn" title="${tr('reverseReading')}">
               <span style="font-size: 20px; font-weight: bold;">⇄</span>
             </button>
@@ -635,7 +641,8 @@
       horizontalGap: 0, // 横向连续模式图片间距
       verticalGap: 0, // 纵向连续模式图片间距
       readMode: 'single',
-      reverse: false
+      reverse: false,
+      fitMode: 'height'
     };
     
     // 从 localStorage 加载设置
@@ -652,7 +659,8 @@
             horizontalGap: parsed.horizontalGap ?? DEFAULT_SETTINGS.horizontalGap,
             verticalGap: parsed.verticalGap ?? DEFAULT_SETTINGS.verticalGap,
             readMode: parsed.readMode ?? DEFAULT_SETTINGS.readMode,
-            reverse: parsed.reverse ?? DEFAULT_SETTINGS.reverse
+            reverse: parsed.reverse ?? DEFAULT_SETTINGS.reverse,
+            fitMode: parsed.fitMode ?? DEFAULT_SETTINGS.fitMode
           };
         }
       } catch (e) {
@@ -672,7 +680,8 @@
           horizontalGap: state.settings.horizontalGap,
           verticalGap: state.settings.verticalGap,
           readMode: state.settings.readMode,
-          reverse: state.settings.reverse
+          reverse: state.settings.reverse,
+          fitMode: state.settings.fitMode
         };
         localStorage.setItem('eh_reader_settings', JSON.stringify(settings));
       } catch (e) {
@@ -704,7 +713,8 @@
             reverse: savedSettings.reverse,
             verticalSidePadding: savedSettings.verticalSidePadding,
             horizontalGap: savedSettings.horizontalGap,
-            verticalGap: savedSettings.verticalGap
+            verticalGap: savedSettings.verticalGap,
+            fitMode: savedSettings.fitMode
       },
       autoPage: {
         running: false,
@@ -885,6 +895,7 @@
   autoBtn: document.getElementById('eh-auto-btn'),
     // thumbnailsToggleBtn: 已移除
       reverseBtn: document.getElementById('eh-reverse-btn'),
+      fitModeBtn: document.getElementById('eh-fitmode-btn'),
       settingsPanel: document.getElementById('eh-settings-panel'),
       settingsCloseBtn: document.getElementById('eh-settings-close'),
       resetSettingsBtn: document.getElementById('eh-reset-settings'),
@@ -2469,6 +2480,7 @@
         }
       }
       updateImageInfo(pageNum);
+      reapplyFitMode();
     }
 
     // 生成缩略图（懒加载优化版）
@@ -4389,6 +4401,9 @@
           // 应用反向状态
           applyReverseState();
           
+          // 重置填充模式
+          applyFitMode(DEFAULT_SETTINGS.fitMode);
+          
           // 保存到 localStorage
           saveSettings();
           
@@ -4474,6 +4489,13 @@
       elements.reverseBtn.onclick = () => {
         state.settings.reverse = !state.settings.reverse;
         applyReverseState();
+      };
+    }
+
+    if (elements.fitModeBtn) {
+      elements.fitModeBtn.onclick = (e) => {
+        e.stopPropagation();
+        cycleFitMode();
       };
     }
 
@@ -4968,6 +4990,78 @@
         const offsetY = state.settings.imageOffsetY;
         elements.currentImage.style.transform = `scale(${scale}) translate(${offsetX}px, ${offsetY}px)`;
         elements.currentImage.style.cursor = scale > 1 ? 'grab' : 'pointer';
+      }
+    }
+
+    // ========== 填充模式切换 (fit-height / fit-width / fit-original) ==========
+    const FIT_MODES = ['height', 'width', 'original'];
+    const FIT_MODE_LABELS = {
+      height: '适应高度',
+      width: '适应宽度',
+      original: '原始大小'
+    };
+
+    function applyFitMode(mode) {
+      state.settings.fitMode = mode;
+
+      // 重置缩放
+      resetImageZoom();
+
+      // 在 #eh-viewer 上设置 CSS class（对应 reader.css 中的规则）
+      const viewer = document.getElementById('eh-viewer');
+      if (viewer) {
+        viewer.classList.remove('eh-fit-height', 'eh-fit-width', 'eh-fit-original');
+        viewer.classList.add(`eh-fit-${mode}`);
+      }
+
+      // 同步按钮状态
+      syncFitModeBtn(mode);
+
+      saveSettings();
+    }
+
+    function cycleFitMode() {
+      const current = state.settings.fitMode || 'height';
+      const idx = FIT_MODES.indexOf(current);
+      const next = FIT_MODES[(idx + 1) % FIT_MODES.length];
+      applyFitMode(next);
+    }
+
+    // 翻页时重应用 fitMode CSS 类（不重置缩放）
+    function reapplyFitMode() {
+      const mode = state.settings.fitMode || 'height';
+      // 连续模式下不应用 fit 模式
+      if (state.settings.readMode === 'continuous-horizontal' || state.settings.readMode === 'continuous-vertical') {
+        const viewer = document.getElementById('eh-viewer');
+        if (viewer) {
+          viewer.classList.remove('eh-fit-height', 'eh-fit-width', 'eh-fit-original');
+        }
+        return;
+      }
+      // 仅刷新 CSS 类，不重置缩放
+      const viewer = document.getElementById('eh-viewer');
+      if (viewer) {
+        viewer.classList.remove('eh-fit-height', 'eh-fit-width', 'eh-fit-original');
+        viewer.classList.add(`eh-fit-${mode}`);
+      }
+      // 同步按钮状态
+      syncFitModeBtn(mode);
+    }
+
+    // 同步按钮图标和标题（不重置缩放，不保存设置）
+    function syncFitModeBtn(mode) {
+      const btn = document.getElementById('eh-fitmode-btn');
+      if (!btn) return;
+      btn.dataset.fitmode = mode;
+      btn.title = `填充模式: ${FIT_MODE_LABELS[mode] || mode} (W)`;
+      const svg = btn.querySelector('svg');
+      if (!svg) return;
+      if (mode === 'height') {
+        svg.innerHTML = '<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m10 0h3a2 2 0 0 0 2-2v-3"/><path d="M12 10v4m-2-2h4"/>';
+      } else if (mode === 'width') {
+        svg.innerHTML = '<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m10 0h3a2 2 0 0 0 2-2v-3"/><path d="M10 12h4m-2-2v4"/>';
+      } else {
+        svg.innerHTML = '<circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M1 12h2m18 0h2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M4.22 19.78l1.42-1.42m12.72-12.72l1.42-1.42"/>';
       }
     }
 
@@ -7361,6 +7455,11 @@
             });
           }
           exitContinuousMode();
+          e.preventDefault();
+          break;
+        case 'w':
+        case 'W':
+          cycleFitMode();
           e.preventDefault();
           break;
         case 'ArrowLeft':
